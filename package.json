@@ -1,0 +1,51 @@
+{
+  "name": "excalidraw-webmcp",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --pretty false",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build && npm run test:e2e"
+  },
+  "dependencies": {
+    "@excalidraw/excalidraw": "^0.18.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.57.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.5.2",
+    "@types/node": "^22.10.5",
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^6.1.0",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "globals": "^15.14.0",
+    "jsdom": "^27.4.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.19.1",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "@excalidraw/excalidraw": {
+      "nanoid": "3.3.18"
+    },
+    "@excalidraw/mermaid-to-excalidraw": {
+      "nanoid": "5.1.16"
+    },
+    "lodash-es": "4.18.1"
+  }
+}
