@@ -5,6 +5,7 @@ import {
   connectElementsSchema,
   deleteElementsSchema,
   emptyInputSchema,
+  moveAgentCursorSchema,
   updateElementsSchema,
 } from "./schemas";
 
@@ -48,6 +49,9 @@ export interface ToolHandlers {
   ): unknown | Promise<unknown>;
   connectElements(
     input: z.infer<typeof connectElementsSchema>,
+  ): unknown | Promise<unknown>;
+  moveAgentCursor(
+    input: z.infer<typeof moveAgentCursorSchema>,
   ): unknown | Promise<unknown>;
 }
 
@@ -104,6 +108,19 @@ export function createToolDefinitions(
       schema: emptyInputSchema,
       annotations: { readOnlyHint: true, untrustedContentHint: true },
       run: () => handlers.readCanvas(),
+    }),
+    tool({
+      name: "move_agent_cursor",
+      title: "Move the visible agent cursor",
+      description:
+        "Move Nova's visible cursor to exact Excalidraw scene coordinates. The cursor follows an interruptible natural path and remains aligned while the human pans or zooms. This changes only ephemeral agent presence, not canvas content.",
+      schema: moveAgentCursorSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+      },
+      run: (input) => handlers.moveAgentCursor(input),
     }),
     tool({
       name: "add_elements",

@@ -3,6 +3,7 @@ import {
   addElementsSchema,
   connectElementsSchema,
   deleteElementsSchema,
+  moveAgentCursorSchema,
   updateElementsSchema,
 } from "./schemas";
 
@@ -38,6 +39,13 @@ describe("direct WebMCP input validation", () => {
         ],
       }).success,
     ).toBe(true);
+    expect(
+      moveAgentCursorSchema.safeParse({
+        x: 420,
+        y: 260,
+        activity: "thinking",
+      }).success,
+    ).toBe(true);
   });
 
   it("rejects ambiguous, duplicate, or unsafe edits", () => {
@@ -60,6 +68,13 @@ describe("direct WebMCP input validation", () => {
     expect(
       connectElementsSchema.safeParse({
         connections: [{ id: "loop", fromId: "step-1", toId: "step-1" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      moveAgentCursorSchema.safeParse({
+        x: 0,
+        y: 0,
+        activity: "teleporting",
       }).success,
     ).toBe(false);
   });

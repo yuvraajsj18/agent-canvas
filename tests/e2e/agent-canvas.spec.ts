@@ -33,9 +33,75 @@ test("WebMCP adapter edits immediately, supports selection, undo, and persistenc
     "add_elements",
     "connect_elements",
     "delete_elements",
+    "move_agent_cursor",
     "read_canvas",
     "update_elements",
   ]);
+
+  const moveResult = await page.evaluate(() =>
+    window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke("move_agent_cursor", {
+      x: 420,
+      y: 260,
+      activity: "thinking",
+    }),
+  );
+  expect(moveResult?.structuredContent).toMatchObject({
+    agent: "Nova",
+    x: 420,
+    y: 260,
+    activity: "thinking",
+  });
+  const cursor = page.getByTestId("agent-cursor");
+  await expect(cursor).toBeVisible();
+  await expect(cursor).toHaveAttribute("data-target-x", "420");
+  await expect(cursor).toHaveAttribute("data-target-y", "260");
+  await expect(cursor).toHaveAttribute("data-activity", "thinking");
+  await expect(cursor).toHaveAttribute("data-phase", "settled", {
+    timeout: 2_000,
+  });
+  expect(await cursor.evaluate((element) => getComputedStyle(element).pointerEvents)).toBe(
+    "none",
+  );
+
+  await page.evaluate(() =>
+    window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke("move_agent_cursor", {
+      x: 1_200,
+      y: 800,
+      activity: "moving",
+    }),
+  );
+  await page.waitForTimeout(50);
+  await page.evaluate(() =>
+    window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke("move_agent_cursor", {
+      x: 160,
+      y: 120,
+      activity: "reading",
+    }),
+  );
+  await expect(cursor).toHaveAttribute("data-target-x", "160");
+  await expect(cursor).toHaveAttribute("data-target-y", "120");
+  await expect(cursor).toHaveAttribute("data-phase", "settled", {
+    timeout: 2_000,
+  });
+  const interruptedPosition = await cursor.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return { x: bounds.x, y: bounds.y };
+  });
+  await page.waitForTimeout(950);
+  const finalInterruptedPosition = await cursor.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return { x: bounds.x, y: bounds.y };
+  });
+  expect(finalInterruptedPosition.x).toBeCloseTo(interruptedPosition.x, 1);
+  expect(finalInterruptedPosition.y).toBeCloseTo(interruptedPosition.y, 1);
+
+  const transformBeforeZoom = await cursor.getAttribute("style");
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  await expect
+    .poll(() => cursor.getAttribute("style"))
+    .not.toBe(transformBeforeZoom);
+  await expect(cursor).toHaveAttribute("data-target-x", "160");
+  await expect(cursor).toHaveAttribute("data-target-y", "120");
 
   await page.evaluate(() =>
     window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke("add_elements", {
@@ -64,6 +130,12 @@ test("WebMCP adapter edits immediately, supports selection, undo, and persistenc
         },
       ],
     }),
+  );
+  expect(await page.evaluate(() => window.__AGENT_CANVAS_TEST__?.getAgentCursor())).toMatchObject(
+    {
+      activity: "editing",
+      target: { x: 590, y: 185 },
+    },
   );
   await page.evaluate(() =>
     window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke("connect_elements", {
@@ -124,6 +196,9 @@ test("WebMCP adapter edits immediately, supports selection, undo, and persistenc
     window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke("read_selection", {}),
   );
   expect(selection?.structuredContent.selectedIds).toEqual(["plan"]);
+  await expect(cursor).toHaveAttribute("data-phase", "settled", {
+    timeout: 2_000,
+  });
 
   await page.screenshot({
     path: "artifacts/agent-canvas-webmcp.png",
@@ -153,6 +228,7 @@ test("native WebMCP discovers and performs direct canvas edits", async ({ page }
     "add_elements",
     "connect_elements",
     "delete_elements",
+    "move_agent_cursor",
     "read_canvas",
     "update_elements",
   ]);
@@ -247,6 +323,33 @@ test("native WebMCP discovers and performs direct canvas edits", async ({ page }
   expect(nativeSelection.structuredContent.selectedIds).toEqual(["native-box"]);
 });
 
+test("agent cursor removes travel motion for reduced-motion users", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+
+  const phaseAfterThreeFrames = await page.evaluate(async () => {
+    await window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke("move_agent_cursor", {
+      x: 640,
+      y: 320,
+      activity: "thinking",
+    });
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+    );
+    return document.querySelector<HTMLElement>("[data-testid='agent-cursor']")
+      ?.dataset.phase;
+  });
+
+  expect(phaseAfterThreeFrames).toBe("settled");
+  await expect(page.getByTestId("agent-cursor")).toHaveAttribute(
+    "data-activity",
+    "thinking",
+  );
+});
+
 async function readCanvasWithAdapter(page: import("@playwright/test").Page) {
   const result = await page.evaluate(() =>
     window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke("read_canvas", {}),
@@ -285,6 +388,10 @@ declare global {
     };
     __AGENT_CANVAS_TEST__?: {
       getState(): unknown;
+      getAgentCursor(): {
+        activity: string;
+        target: { x: number; y: number };
+      } | null;
       selectElements(ids: string[]): void;
     };
   }

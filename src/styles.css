@@ -28,3 +28,97 @@ body {
   width: 100%;
   height: 100%;
 }
+
+.canvas-root {
+  position: relative;
+  isolation: isolate;
+}
+
+.agent-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  width: max-content;
+  color: #7c3aed;
+  pointer-events: none;
+  user-select: none;
+  will-change: transform;
+}
+
+.agent-cursor__pointer {
+  display: block;
+  overflow: visible;
+  filter: drop-shadow(0 1px 2px rgb(28 16 52 / 28%));
+}
+
+.agent-cursor__badge {
+  position: absolute;
+  top: 23px;
+  left: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 4px 8px;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 7px;
+  background: #7c3aed;
+  box-shadow:
+    0 1px 2px rgb(28 16 52 / 22%),
+    0 4px 12px rgb(28 16 52 / 14%);
+  color: #fff;
+  font-family:
+    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  animation: agent-cursor-enter 160ms ease-out both;
+}
+
+.agent-cursor__status {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: #b2f2bb;
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 16%);
+}
+
+.agent-cursor__activity {
+  padding-left: 1px;
+  color: rgb(255 255 255 / 72%);
+  font-weight: 500;
+}
+
+.agent-cursor[data-phase="moving"] .agent-cursor__status {
+  animation: agent-cursor-pulse 900ms ease-in-out infinite;
+}
+
+@keyframes agent-cursor-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes agent-cursor-pulse {
+  50% {
+    opacity: 0.55;
+    transform: scale(0.78);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-cursor__badge,
+  .agent-cursor[data-phase="moving"] .agent-cursor__status {
+    animation: none;
+  }
+}

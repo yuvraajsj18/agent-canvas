@@ -14,6 +14,7 @@ const handlers = () => ({
   connectElements: vi.fn((input) => ({
     addedIds: input.connections.map((item: { id: string }) => item.id),
   })),
+  moveAgentCursor: vi.fn((input) => ({ agent: "Nova", ...input })),
 });
 
 describe("WebMCP direct-edit adapter", () => {
@@ -26,6 +27,7 @@ describe("WebMCP direct-edit adapter", () => {
       "add_elements",
       "connect_elements",
       "delete_elements",
+      "move_agent_cursor",
       "read_canvas",
       "update_elements",
     ]);
@@ -45,6 +47,20 @@ describe("WebMCP direct-edit adapter", () => {
       adapter.invoke("update_elements", { updates: [{ id: "shape-1" }] }),
     ).rejects.toThrow();
     expect(callbacks.updateElements).toHaveBeenCalledTimes(1);
+    await expect(
+      adapter.invoke("move_agent_cursor", {
+        x: 420,
+        y: 260,
+        activity: "thinking",
+      }),
+    ).resolves.toMatchObject({
+      structuredContent: {
+        agent: "Nova",
+        x: 420,
+        y: 260,
+        activity: "thinking",
+      },
+    });
 
     adapter.replace(createToolDefinitions(callbacks, { hasSelection: true }));
     expect(adapter.listTools().map((tool) => tool.name)).toContain(
@@ -69,7 +85,7 @@ describe("native registration lifecycle", () => {
     const lifecycle = adapter.registerNative(context);
     await lifecycle.ready;
 
-    expect(registrations).toHaveLength(5);
+    expect(registrations).toHaveLength(6);
     expect(registrations.every(({ signal }) => !signal.aborted)).toBe(true);
     lifecycle.cleanup();
     expect(registrations.every(({ signal }) => signal.aborted)).toBe(true);

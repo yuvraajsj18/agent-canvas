@@ -3,6 +3,7 @@ import {
   CaptureUpdateAction,
   Excalidraw,
   convertToExcalidrawElements,
+  viewportCoordsToSceneCoords,
 } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
@@ -20,6 +21,16 @@ import {
 } from "./core/canvas-ops";
 import { loadWorkspace, saveWorkspace } from "./core/storage";
 import type { SceneElementLike } from "./core/types";
+import {
+  AgentCursor,
+  type AgentCursorViewport,
+} from "./cursor/AgentCursor";
+import {
+  centerOfElements,
+  type AgentCursorActivity,
+  type AgentCursorCommand,
+  type ScenePoint,
+} from "./cursor/agent-cursor-motion";
 import type { ToolHandlers } from "./webmcp/registry";
 import { useWebMcp } from "./webmcp/use-webmcp";
 import "./styles.css";
@@ -47,15 +58,64 @@ export default function App() {
   const initialElementsRef = useRef<ExcalidrawElement[]>(loadInitialElements());
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [rootElement, setRootElement] = useState<HTMLElement | null>(null);
+  const [cursorCommand, setCursorCommand] =
+    useState<AgentCursorCommand | null>(null);
+  const [cursorViewport, setCursorViewport] =
+    useState<AgentCursorViewport | null>(null);
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(api);
   const elementsRef = useRef<readonly ExcalidrawElement[]>(
     initialElementsRef.current,
   );
   const selectedIdsRef = useRef<string[]>(selectedIds);
+  const cursorCommandRef = useRef<AgentCursorCommand | null>(cursorCommand);
+  const cursorSequenceRef = useRef(0);
+  const cursorViewportRef = useRef<AgentCursorViewport | null>(cursorViewport);
   const saveTimerRef = useRef<number | null>(null);
 
   apiRef.current = api;
   selectedIdsRef.current = selectedIds;
+  cursorCommandRef.current = cursorCommand;
+
+  const syncCursorViewport = useCallback((appState: AppState) => {
+    const nextViewport = cursorViewportFromAppState(appState);
+    if (sameCursorViewport(cursorViewportRef.current, nextViewport)) return;
+    cursorViewportRef.current = nextViewport;
+    setCursorViewport(nextViewport);
+  }, []);
+
+  const showAgentCursor = useCallback(
+    (target: ScenePoint, activity: AgentCursorActivity) => {
+      const command = {
+        sequence: ++cursorSequenceRef.current,
+        target,
+        activity,
+      } satisfies AgentCursorCommand;
+      cursorCommandRef.current = command;
+      setCursorCommand(command);
+      return command;
+    },
+    [],
+  );
+
+  const readViewportCenter = useCallback((): ScenePoint => {
+    const currentApi = apiRef.current;
+    if (!currentApi || !rootElement) return { x: 320, y: 240 };
+    const bounds = rootElement.getBoundingClientRect();
+    return viewportCoordsToSceneCoords(
+      {
+        clientX: bounds.left + bounds.width / 2,
+        clientY: bounds.top + bounds.height / 2,
+      },
+      currentApi.getAppState(),
+    );
+  }, [rootElement]);
+
+  const targetForElements = useCallback(
+    (elements: readonly SceneElementLike[]) =>
+      centerOfElements(elements) ?? readViewportCenter(),
+    [readViewportCenter],
+  );
 
   const readLiveElements = useCallback((): SceneElementLike[] => {
     const currentApi = apiRef.current;
@@ -76,10 +136,21 @@ export default function App() {
 
   const toolHandlers = useMemo<ToolHandlers>(
     () => ({
-      readCanvas: () => readCanvasSnapshot(readLiveElements()),
+      readCanvas: () => {
+        const live = readLiveElements();
+        showAgentCursor(targetForElements(live), "reading");
+        return readCanvasSnapshot(live);
+      },
       readSelection: () => {
         const selected = new Set(selectedIdsRef.current);
-        const snapshot = readCanvasSnapshot(readLiveElements());
+        const live = readLiveElements();
+        showAgentCursor(
+          targetForElements(
+            live.filter((element) => selected.has(element.id)),
+          ),
+          "reading",
+        );
+        const snapshot = readCanvasSnapshot(live);
         return {
           selectedIds: [...selected],
           revision: snapshot.revision,
@@ -98,6 +169,7 @@ export default function App() {
             regenerateIds: false,
           }) as ExcalidrawElement[],
         );
+        showAgentCursor(targetForElements(materialized), "editing");
         const frameAssignments = input.elements
           .filter((element) => element.type === "frame")
           .map((element) => ({
@@ -121,6 +193,13 @@ export default function App() {
           readLiveElements(),
           input.updates,
         );
+        const updatedIds = new Set(result.updatedIds);
+        showAgentCursor(
+          targetForElements(
+            result.elements.filter((element) => updatedIds.has(element.id)),
+          ),
+          "editing",
+        );
         commitElements(result.elements);
         return {
           updatedElementIds: result.updatedIds,
@@ -128,7 +207,15 @@ export default function App() {
         };
       },
       deleteElements: (input) => {
-        const result = deleteCanvasElements(readLiveElements(), input.ids);
+        const live = readLiveElements();
+        const requestedIds = new Set(input.ids);
+        showAgentCursor(
+          targetForElements(
+            live.filter((element) => requestedIds.has(element.id)),
+          ),
+          "editing",
+        );
+        const result = deleteCanvasElements(live, input.ids);
         commitElements(result.elements);
         return {
           deletedElementIds: result.deletedIds,
@@ -180,6 +267,7 @@ export default function App() {
             regenerateIds: false,
           }) as ExcalidrawElement[],
         );
+        showAgentCursor(targetForElements(materialized), "editing");
         const result = connectCanvasElements(
           live,
           materialized,
@@ -198,8 +286,26 @@ export default function App() {
           revision: sceneRevision(result.elements),
         };
       },
+      moveAgentCursor: (input) => {
+        const command = showAgentCursor(
+          { x: input.x, y: input.y },
+          input.activity ?? "moving",
+        );
+        return {
+          agent: "Nova",
+          x: command.target.x,
+          y: command.target.y,
+          activity: command.activity,
+          sequence: command.sequence,
+        };
+      },
     }),
-    [commitElements, readLiveElements],
+    [
+      commitElements,
+      readLiveElements,
+      showAgentCursor,
+      targetForElements,
+    ],
   );
 
   useWebMcp(toolHandlers, { hasSelection: selectedIds.length > 0 });
@@ -207,6 +313,7 @@ export default function App() {
   const handleChange = useCallback(
     (nextElements: readonly ExcalidrawElement[], nextAppState: AppState) => {
       elementsRef.current = nextElements;
+      syncCursorViewport(nextAppState);
       const nextSelectedIds = Object.entries(nextAppState.selectedElementIds)
         .filter(([, selected]) => selected)
         .map(([id]) => id)
@@ -230,17 +337,20 @@ export default function App() {
         }
       }, 200);
     },
-    [],
+    [syncCursorViewport],
   );
 
   useEffect(() => {
     if (!api) return;
     api.history.clear();
-  }, [api]);
+    syncCursorViewport(api.getAppState());
+    return api.onScrollChange(() => syncCursorViewport(api.getAppState()));
+  }, [api, syncCursorViewport]);
 
   useEffect(() => {
     window.__AGENT_CANVAS_TEST__ = {
       getState: () => readCanvasSnapshot(readLiveElements()),
+      getAgentCursor: () => cursorCommandRef.current,
       selectElements: (ids) => {
         const currentApi = apiRef.current;
         if (!currentApi) throw new Error("The Excalidraw canvas is not ready.");
@@ -263,7 +373,11 @@ export default function App() {
   }, [readLiveElements]);
 
   return (
-    <main className="canvas-root" aria-label="Excalidraw canvas">
+    <main
+      ref={setRootElement}
+      className="canvas-root"
+      aria-label="Excalidraw canvas"
+    >
       <Excalidraw
         excalidrawAPI={setApi}
         initialData={{
@@ -271,6 +385,11 @@ export default function App() {
           appState: { viewBackgroundColor: "#ffffff" },
         }}
         onChange={handleChange}
+      />
+      <AgentCursor
+        command={cursorCommand}
+        viewport={cursorViewport}
+        root={rootElement}
       />
     </main>
   );
@@ -331,10 +450,37 @@ function binding(elementId: string) {
   return { elementId, focus: 0, gap: 1, fixedPoint: null };
 }
 
+function cursorViewportFromAppState(
+  appState: AppState,
+): AgentCursorViewport {
+  return {
+    zoom: appState.zoom,
+    offsetLeft: appState.offsetLeft,
+    offsetTop: appState.offsetTop,
+    scrollX: appState.scrollX,
+    scrollY: appState.scrollY,
+  };
+}
+
+function sameCursorViewport(
+  current: AgentCursorViewport | null,
+  next: AgentCursorViewport,
+): boolean {
+  return Boolean(
+    current &&
+      current.zoom.value === next.zoom.value &&
+      current.offsetLeft === next.offsetLeft &&
+      current.offsetTop === next.offsetTop &&
+      current.scrollX === next.scrollX &&
+      current.scrollY === next.scrollY,
+  );
+}
+
 declare global {
   interface Window {
     __AGENT_CANVAS_TEST__?: {
       getState(): unknown;
+      getAgentCursor(): AgentCursorCommand | null;
       selectElements(ids: string[]): void;
     };
   }

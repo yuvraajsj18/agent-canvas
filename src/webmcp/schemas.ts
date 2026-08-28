@@ -125,6 +125,16 @@ export const connectElementsSchema = z
     { path: ["connections"], message: "Connection IDs must be unique." },
   );
 
+export const moveAgentCursorSchema = z
+  .object({
+    x: coordinateSchema,
+    y: coordinateSchema,
+    activity: z
+      .enum(["moving", "thinking", "reading", "editing"])
+      .optional(),
+  })
+  .strict();
+
 export const emptyInputSchema = z.object({}).strict();
 
 export function asJsonSchema(schema: z.ZodType): Record<string, unknown> {
@@ -135,3 +145,4 @@ export type AddElementsInput = z.infer<typeof addElementsSchema>;
 export type UpdateElementsInput = z.infer<typeof updateElementsSchema>;
 export type DeleteElementsInput = z.infer<typeof deleteElementsSchema>;
 export type ConnectElementsInput = z.infer<typeof connectElementsSchema>;
+export type MoveAgentCursorInput = z.infer<typeof moveAgentCursorSchema>;
