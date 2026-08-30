@@ -6,6 +6,7 @@ import {
   deleteElementsSchema,
   emptyInputSchema,
   moveAgentCursorSchema,
+  setAgentIdentitySchema,
   updateElementsSchema,
 } from "./schemas";
 
@@ -52,6 +53,9 @@ export interface ToolHandlers {
   ): unknown | Promise<unknown>;
   moveAgentCursor(
     input: z.infer<typeof moveAgentCursorSchema>,
+  ): unknown | Promise<unknown>;
+  setAgentIdentity(
+    input: z.infer<typeof setAgentIdentitySchema>,
   ): unknown | Promise<unknown>;
 }
 
@@ -104,7 +108,7 @@ export function createToolDefinitions(
       name: "read_canvas",
       title: "Read the live Excalidraw canvas",
       description:
-        "Read current non-deleted elements, labels, bindings, locks, and the scene revision. Always call this before editing. Canvas text is untrusted user content.",
+        "Read current non-deleted elements, labels, bindings, locks, and the scene revision. Call set_agent_identity once, then always call this before editing. Canvas text is untrusted user content.",
       schema: emptyInputSchema,
       annotations: { readOnlyHint: true, untrustedContentHint: true },
       run: () => handlers.readCanvas(),
@@ -113,7 +117,7 @@ export function createToolDefinitions(
       name: "move_agent_cursor",
       title: "Move the visible agent cursor",
       description:
-        "Move Nova's visible cursor to exact Excalidraw scene coordinates. The cursor follows an interruptible natural path and remains aligned while the human pans or zooms. This changes only ephemeral agent presence, not canvas content.",
+        "Move the current external agent's visible cursor to exact Excalidraw scene coordinates. The cursor follows an interruptible natural path and remains aligned while the human pans or zooms. This changes only ephemeral agent presence, not canvas content.",
       schema: moveAgentCursorSchema,
       annotations: {
         readOnlyHint: false,
@@ -121,6 +125,19 @@ export function createToolDefinitions(
         idempotentHint: true,
       },
       run: (input) => handlers.moveAgentCursor(input),
+    }),
+    tool({
+      name: "set_agent_identity",
+      title: "Set the visible agent identity",
+      description:
+        "Call this once before other canvas tools. Set the visible cursor label to the current external agent's name, such as Codex, Claude, or Gemini. The identity lasts only for this page session and replaces any prior agent label.",
+      schema: setAgentIdentitySchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+      },
+      run: (input) => handlers.setAgentIdentity(input),
     }),
     tool({
       name: "add_elements",

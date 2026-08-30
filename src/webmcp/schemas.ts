@@ -135,6 +135,24 @@ export const moveAgentCursorSchema = z
   })
   .strict();
 
+export const setAgentIdentitySchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(40)
+      .refine(
+        (name) =>
+          [...name].every((character) => {
+            const codePoint = character.codePointAt(0) ?? 0;
+            return codePoint > 31 && codePoint !== 127;
+          }),
+        { message: "Agent names cannot contain control characters." },
+      ),
+  })
+  .strict();
+
 export const emptyInputSchema = z.object({}).strict();
 
 export function asJsonSchema(schema: z.ZodType): Record<string, unknown> {
@@ -146,3 +164,4 @@ export type UpdateElementsInput = z.infer<typeof updateElementsSchema>;
 export type DeleteElementsInput = z.infer<typeof deleteElementsSchema>;
 export type ConnectElementsInput = z.infer<typeof connectElementsSchema>;
 export type MoveAgentCursorInput = z.infer<typeof moveAgentCursorSchema>;
+export type SetAgentIdentityInput = z.infer<typeof setAgentIdentitySchema>;

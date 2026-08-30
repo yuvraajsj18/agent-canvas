@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("shows only the standard Excalidraw surface", async ({ page }) => {
-  await expect(page.getByText("Nova", { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("agent-cursor")).toHaveCount(0);
   await expect(page.locator(".review-panel")).toHaveCount(0);
   await expect(page.locator(".command-bar")).toHaveCount(0);
   await expect(page.getByTestId("proposal-overlay")).toHaveCount(0);
@@ -35,8 +35,16 @@ test("WebMCP adapter edits immediately, supports selection, undo, and persistenc
     "delete_elements",
     "move_agent_cursor",
     "read_canvas",
+    "set_agent_identity",
     "update_elements",
   ]);
+
+  const identityResult = await page.evaluate(() =>
+    window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke("set_agent_identity", {
+      name: "Codex",
+    }),
+  );
+  expect(identityResult?.structuredContent).toEqual({ agent: "Codex" });
 
   const moveResult = await page.evaluate(() =>
     window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke("move_agent_cursor", {
@@ -46,13 +54,15 @@ test("WebMCP adapter edits immediately, supports selection, undo, and persistenc
     }),
   );
   expect(moveResult?.structuredContent).toMatchObject({
-    agent: "Nova",
+    agent: "Codex",
     x: 420,
     y: 260,
     activity: "thinking",
   });
   const cursor = page.getByTestId("agent-cursor");
   await expect(cursor).toBeVisible();
+  await expect(cursor).toHaveAttribute("data-agent-name", "Codex");
+  await expect(page.getByTestId("agent-cursor-name")).toHaveText("Codex");
   await expect(cursor).toHaveAttribute("data-target-x", "420");
   await expect(cursor).toHaveAttribute("data-target-y", "260");
   await expect(cursor).toHaveAttribute("data-activity", "thinking");
@@ -230,6 +240,7 @@ test("native WebMCP discovers and performs direct canvas edits", async ({ page }
     "delete_elements",
     "move_agent_cursor",
     "read_canvas",
+    "set_agent_identity",
     "update_elements",
   ]);
   expect(discovered.find((tool) => tool.name === "read_canvas")?.annotations).toMatchObject({
@@ -247,7 +258,16 @@ test("native WebMCP discovers and performs direct canvas edits", async ({ page }
     const modelContext = (
       document as Document & { modelContext: BrowserModelContext }
     ).modelContext;
-    const tools = await modelContext.getTools();
+    let tools = await modelContext.getTools();
+    const identityTool = tools.find(
+      (tool) => tool.name === "set_agent_identity",
+    );
+    if (!identityTool) throw new Error("set_agent_identity was not discovered.");
+    await modelContext.executeTool(
+      identityTool,
+      JSON.stringify({ name: "Claude" }),
+    );
+    tools = await modelContext.getTools();
     const addTool = tools.find((tool) => tool.name === "add_elements");
     if (!addTool) throw new Error("add_elements was not discovered.");
     await modelContext.executeTool(
@@ -267,6 +287,7 @@ test("native WebMCP discovers and performs direct canvas edits", async ({ page }
       }),
     );
   });
+  await expect(page.getByTestId("agent-cursor-name")).toHaveText("Claude");
 
   const nativeRead = await page.evaluate(async () => {
     const modelContext = (
@@ -329,6 +350,10 @@ test("agent cursor removes travel motion for reduced-motion users", async ({
   await page.emulateMedia({ reducedMotion: "reduce" });
 
   const phaseAfterThreeFrames = await page.evaluate(async () => {
+    await window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke(
+      "set_agent_identity",
+      { name: "Gemini" },
+    );
     await window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke("move_agent_cursor", {
       x: 640,
       y: 320,
@@ -348,6 +373,7 @@ test("agent cursor removes travel motion for reduced-motion users", async ({
     "data-activity",
     "thinking",
   );
+  await expect(page.getByTestId("agent-cursor-name")).toHaveText("Gemini");
 });
 
 async function readCanvasWithAdapter(page: import("@playwright/test").Page) {

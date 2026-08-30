@@ -15,12 +15,18 @@ export type AgentCursorViewport = Pick<
 >;
 
 interface AgentCursorProps {
+  agentName: string;
   command: AgentCursorCommand | null;
   viewport: AgentCursorViewport | null;
   root: HTMLElement | null;
 }
 
-export function AgentCursor({ command, viewport, root }: AgentCursorProps) {
+export function AgentCursor({
+  agentName,
+  command,
+  viewport,
+  root,
+}: AgentCursorProps) {
   const [scenePosition, setScenePosition] = useState<ScenePoint | null>(null);
   const [isMoving, setIsMoving] = useState(false);
   const positionRef = useRef<ScenePoint | null>(null);
@@ -86,6 +92,7 @@ export function AgentCursor({ command, viewport, root }: AgentCursorProps) {
     <div
       className="agent-cursor"
       data-activity={command.activity}
+      data-agent-name={agentName}
       data-phase={isMoving ? "moving" : "settled"}
       data-target-x={command.target.x}
       data-target-y={command.target.y}
@@ -115,7 +122,7 @@ export function AgentCursor({ command, viewport, root }: AgentCursorProps) {
       </svg>
       <span className="agent-cursor__badge">
         <span className="agent-cursor__status" />
-        <span>Nova</span>
+        <span data-testid="agent-cursor-name">{agentName}</span>
         <span className="agent-cursor__activity">{activityLabel}</span>
       </span>
     </div>

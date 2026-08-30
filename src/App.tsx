@@ -35,6 +35,8 @@ import type { ToolHandlers } from "./webmcp/registry";
 import { useWebMcp } from "./webmcp/use-webmcp";
 import "./styles.css";
 
+const DEFAULT_AGENT_NAME = "AI Agent";
+
 function asScene(elements: readonly ExcalidrawElement[]): SceneElementLike[] {
   return elements as unknown as SceneElementLike[];
 }
@@ -59,6 +61,7 @@ export default function App() {
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [rootElement, setRootElement] = useState<HTMLElement | null>(null);
+  const [agentName, setAgentName] = useState(DEFAULT_AGENT_NAME);
   const [cursorCommand, setCursorCommand] =
     useState<AgentCursorCommand | null>(null);
   const [cursorViewport, setCursorViewport] =
@@ -68,6 +71,7 @@ export default function App() {
     initialElementsRef.current,
   );
   const selectedIdsRef = useRef<string[]>(selectedIds);
+  const agentNameRef = useRef(agentName);
   const cursorCommandRef = useRef<AgentCursorCommand | null>(cursorCommand);
   const cursorSequenceRef = useRef(0);
   const cursorViewportRef = useRef<AgentCursorViewport | null>(cursorViewport);
@@ -75,6 +79,7 @@ export default function App() {
 
   apiRef.current = api;
   selectedIdsRef.current = selectedIds;
+  agentNameRef.current = agentName;
   cursorCommandRef.current = cursorCommand;
 
   const syncCursorViewport = useCallback((appState: AppState) => {
@@ -97,6 +102,11 @@ export default function App() {
     },
     [],
   );
+
+  const setActiveAgentName = useCallback((name: string) => {
+    agentNameRef.current = name;
+    setAgentName(name);
+  }, []);
 
   const readViewportCenter = useCallback((): ScenePoint => {
     const currentApi = apiRef.current;
@@ -292,18 +302,23 @@ export default function App() {
           input.activity ?? "moving",
         );
         return {
-          agent: "Nova",
+          agent: agentNameRef.current,
           x: command.target.x,
           y: command.target.y,
           activity: command.activity,
           sequence: command.sequence,
         };
       },
+      setAgentIdentity: (input) => {
+        setActiveAgentName(input.name);
+        return { agent: input.name };
+      },
     }),
     [
       commitElements,
       readLiveElements,
       showAgentCursor,
+      setActiveAgentName,
       targetForElements,
     ],
   );
@@ -387,6 +402,7 @@ export default function App() {
         onChange={handleChange}
       />
       <AgentCursor
+        agentName={agentName}
         command={cursorCommand}
         viewport={cursorViewport}
         root={rootElement}

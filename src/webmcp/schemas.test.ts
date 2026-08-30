@@ -4,6 +4,7 @@ import {
   connectElementsSchema,
   deleteElementsSchema,
   moveAgentCursorSchema,
+  setAgentIdentitySchema,
   updateElementsSchema,
 } from "./schemas";
 
@@ -46,6 +47,9 @@ describe("direct WebMCP input validation", () => {
         activity: "thinking",
       }).success,
     ).toBe(true);
+    expect(
+      setAgentIdentitySchema.safeParse({ name: " Codex " }).data,
+    ).toEqual({ name: "Codex" });
   });
 
   it("rejects ambiguous, duplicate, or unsafe edits", () => {
@@ -76,6 +80,12 @@ describe("direct WebMCP input validation", () => {
         y: 0,
         activity: "teleporting",
       }).success,
+    ).toBe(false);
+    expect(setAgentIdentitySchema.safeParse({ name: "  " }).success).toBe(
+      false,
+    );
+    expect(
+      setAgentIdentitySchema.safeParse({ name: "Agent\nName" }).success,
     ).toBe(false);
   });
 });
