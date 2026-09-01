@@ -4,6 +4,10 @@ Agent Canvas is the standard Excalidraw editor with direct WebMCP control. It ad
 
 An external AI agent in a compatible browser can discover the tools through native `document.modelContext.registerTool`. Tool calls read or change the current live scene. Each change uses Excalidraw history, so the standard Undo control can reverse it.
 
+## Live demo
+
+Open [Agent Canvas](https://agent-canvas-lyart.vercel.app/).
+
 ## Run locally
 
 Requirements: Node.js 20 or later and npm.

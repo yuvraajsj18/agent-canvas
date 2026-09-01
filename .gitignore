@@ -5,3 +5,5 @@ playwright-report/
 coverage/
 .DS_Store
 *.local
+.vercel
+.env*
