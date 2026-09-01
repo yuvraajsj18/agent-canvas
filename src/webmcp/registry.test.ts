@@ -43,6 +43,14 @@ describe("WebMCP direct-edit adapter", () => {
       adapter.listTools().find((tool) => tool.name === "delete_elements")
         ?.annotations,
     ).toMatchObject({ destructiveHint: true, readOnlyHint: false });
+    expect(
+      adapter.listTools().find((tool) => tool.name === "read_canvas")
+        ?.description,
+    ).toContain("visualGuidance");
+    expect(
+      adapter.listTools().find((tool) => tool.name === "add_elements")
+        ?.description,
+    ).toContain("30-50 purposeful elements");
     await expect(adapter.invoke("read_canvas", {})).resolves.toMatchObject({
       structuredContent: { revision: "scene_1" },
     });

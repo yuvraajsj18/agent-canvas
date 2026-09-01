@@ -21,6 +21,7 @@ import {
 } from "./core/canvas-ops";
 import { loadWorkspace, saveWorkspace } from "./core/storage";
 import type { SceneElementLike } from "./core/types";
+import { buildIllustrationQualityReminder } from "./core/visual-guidance";
 import {
   AgentCursor,
   type AgentCursorViewport,
@@ -316,6 +317,9 @@ export default function App() {
         return {
           addedElementIds: input.elements.map((element) => element.id),
           materializedElementIds: result.addedIds,
+          illustrationQuality: buildIllustrationQualityReminder(
+            input.elements.length,
+          ),
           revision: sceneRevision(result.elements),
         };
       },

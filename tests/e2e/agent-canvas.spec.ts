@@ -20,7 +20,16 @@ test("shows only the standard Excalidraw surface", async ({ page }) => {
   }));
   expect(layout.root?.width).toBe(layout.viewport.width);
   expect(layout.root?.height).toBe(layout.viewport.height);
-  expect((layout.state as { elementCount: number }).elementCount).toBe(0);
+  expect(layout.state).toMatchObject({
+    elementCount: 0,
+    visualGuidance: {
+      sceneStyle: "empty",
+      illustrationTarget: {
+        minimumElements: 30,
+        maximumElementsPerCall: 50,
+      },
+    },
+  });
 });
 
 test("WebMCP adapter edits immediately, supports selection, undo, and persistence", async ({
@@ -113,7 +122,7 @@ test("WebMCP adapter edits immediately, supports selection, undo, and persistenc
   await expect(cursor).toHaveAttribute("data-target-x", "160");
   await expect(cursor).toHaveAttribute("data-target-y", "120");
 
-  await page.evaluate(() =>
+  const addResult = await page.evaluate(() =>
     window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke("add_elements", {
       elements: [
         {
@@ -141,6 +150,11 @@ test("WebMCP adapter edits immediately, supports selection, undo, and persistenc
       ],
     }),
   );
+  expect(addResult?.structuredContent.illustrationQuality).toMatchObject({
+    addedVisibleElementCount: 2,
+    detailedIllustrationMinimum: 30,
+    status: "draft-if-illustration",
+  });
   expect(await page.evaluate(() => window.__AGENT_CANVAS_TEST__?.getAgentCursor())).toMatchObject(
     {
       activity: "reading",
@@ -328,6 +342,7 @@ test("native WebMCP discovers and performs direct canvas edits", async ({ page }
     const tools = await modelContext.getTools();
     return tools.map((tool) => ({
       name: tool.name,
+      description: tool.description,
       annotations: tool.annotations,
     }));
   });
@@ -344,6 +359,12 @@ test("native WebMCP discovers and performs direct canvas edits", async ({ page }
     readOnlyHint: true,
     untrustedContentHint: true,
   });
+  expect(
+    discovered.find((tool) => tool.name === "read_canvas")?.description,
+  ).toContain("visualGuidance");
+  expect(
+    discovered.find((tool) => tool.name === "add_elements")?.description,
+  ).toContain("30-50 purposeful elements");
   expect(
     discovered.find((tool) => tool.name === "delete_elements")?.annotations,
   ).toMatchObject({
@@ -400,10 +421,16 @@ test("native WebMCP discovers and performs direct canvas edits", async ({ page }
     const value = await modelContext.executeTool(readTool, "{}");
     return typeof value === "string"
       ? (JSON.parse(value) as {
-          structuredContent: { elements: Record<string, unknown>[] };
+          structuredContent: {
+            elements: Record<string, unknown>[];
+            visualGuidance: Record<string, unknown>;
+          };
         })
       : (value as {
-          structuredContent: { elements: Record<string, unknown>[] };
+          structuredContent: {
+            elements: Record<string, unknown>[];
+            visualGuidance: Record<string, unknown>;
+          };
         });
   });
   expect(nativeRead.structuredContent.elements).toEqual(
@@ -415,6 +442,12 @@ test("native WebMCP discovers and performs direct canvas edits", async ({ page }
       }),
     ]),
   );
+  expect(nativeRead.structuredContent.visualGuidance).toMatchObject({
+    illustrationTarget: {
+      minimumElements: 30,
+      maximumElementsPerCall: 50,
+    },
+  });
 
   await page.evaluate(() =>
     window.__AGENT_CANVAS_TEST__?.selectElements(["native-box"]),
@@ -503,6 +536,13 @@ async function readCanvasWithAdapter(page: import("@playwright/test").Page) {
   return result?.structuredContent as {
     revision: string;
     elementCount: number;
+    visualGuidance: {
+      sceneStyle: "empty" | "simple" | "layered";
+      illustrationTarget: {
+        minimumElements: number;
+        maximumElementsPerCall: number;
+      };
+    };
     elements: {
       id: string;
       x: number;

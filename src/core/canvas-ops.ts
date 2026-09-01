@@ -1,5 +1,6 @@
 import { stableId } from "./ids";
 import type { SceneElementLike } from "./types";
+import { buildCanvasVisualGuidance } from "./visual-guidance";
 
 export interface CanvasElementUpdate {
   id: string;
@@ -84,6 +85,7 @@ export function readCanvasSnapshot(elements: readonly SceneElementLike[]) {
   return {
     revision: sceneRevision(live),
     elementCount: parents.length,
+    visualGuidance: buildCanvasVisualGuidance(live),
     elements: parents.map((item) => compactElement(item, live)),
   };
 }

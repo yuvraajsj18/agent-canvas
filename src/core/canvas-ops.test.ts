@@ -305,6 +305,14 @@ describe("direct canvas updates", () => {
     const snapshot = readCanvasSnapshot(scene);
 
     expect(snapshot.elementCount).toBe(1);
+    expect(snapshot.visualGuidance).toMatchObject({
+      sceneStyle: "simple",
+      visibleElementCount: 1,
+      illustrationTarget: {
+        minimumElements: 30,
+        maximumElementsPerCall: 50,
+      },
+    });
     expect(snapshot.elements).toEqual([
       expect.objectContaining({
         id: "box",
