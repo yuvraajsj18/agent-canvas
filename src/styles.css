@@ -46,10 +46,78 @@ body {
   will-change: transform;
 }
 
+.agent-cursor__visual {
+  position: relative;
+  display: block;
+  opacity: 1;
+  filter: blur(0);
+  translate: 0 0;
+  transition-property: opacity, filter, translate;
+  transition-duration: 180ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  will-change: opacity, filter;
+}
+
+.agent-cursor[data-presence="leaving"] .agent-cursor__visual {
+  opacity: 0;
+  filter: blur(4px);
+  translate: 0 -8px;
+}
+
 .agent-cursor__pointer {
   display: block;
   overflow: visible;
   filter: drop-shadow(0 1px 2px rgb(28 16 52 / 28%));
+  transform-origin: 4px 4px;
+}
+
+.agent-cursor__trail {
+  position: absolute;
+  top: 5px;
+  left: -15px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0;
+  transition-property: opacity;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.agent-cursor__trail i {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.agent-cursor__trail i:nth-child(1) {
+  opacity: 0.18;
+}
+
+.agent-cursor__trail i:nth-child(2) {
+  opacity: 0.38;
+}
+
+.agent-cursor__trail i:nth-child(3) {
+  opacity: 0.68;
+}
+
+.agent-cursor[data-phase="moving"] .agent-cursor__trail {
+  opacity: 1;
+}
+
+.agent-cursor__work-ring {
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  width: 18px;
+  height: 18px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  opacity: 0;
+  scale: 0.55;
 }
 
 .agent-cursor__badge {
@@ -93,8 +161,53 @@ body {
   font-weight: 500;
 }
 
+.agent-cursor__activity-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  width: 12px;
+}
+
+.agent-cursor__activity-dots i {
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 78%);
+  animation: agent-cursor-dot 900ms ease-in-out infinite;
+}
+
+.agent-cursor__activity-dots i:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.agent-cursor__activity-dots i:nth-child(3) {
+  animation-delay: 240ms;
+}
+
 .agent-cursor[data-phase="moving"] .agent-cursor__status {
   animation: agent-cursor-pulse 900ms ease-in-out infinite;
+}
+
+.agent-cursor[data-activity="thinking"] .agent-cursor__status {
+  background: #ffd43b;
+}
+
+.agent-cursor[data-activity="reading"] .agent-cursor__status {
+  background: #74c0fc;
+}
+
+.agent-cursor[data-activity="editing"] .agent-cursor__status {
+  background: #b2f2bb;
+}
+
+.agent-cursor[data-activity="editing"][data-phase="settled"]
+  .agent-cursor__pointer {
+  animation: agent-cursor-draw 620ms ease-in-out infinite alternate;
+}
+
+.agent-cursor[data-activity="editing"][data-phase="settled"]
+  .agent-cursor__work-ring {
+  animation: agent-cursor-work-ring 900ms ease-out infinite;
 }
 
 @keyframes agent-cursor-enter {
@@ -116,9 +229,54 @@ body {
   }
 }
 
+@keyframes agent-cursor-dot {
+  0%,
+  70%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+
+  35% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes agent-cursor-draw {
+  from {
+    transform: translate3d(0, 0, 0) rotate(-1deg);
+  }
+
+  to {
+    transform: translate3d(3px, 2px, 0) rotate(2deg);
+  }
+}
+
+@keyframes agent-cursor-work-ring {
+  from {
+    opacity: 0.48;
+    scale: 0.55;
+  }
+
+  to {
+    opacity: 0;
+    scale: 1.45;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .agent-cursor__visual {
+    transition-duration: 1ms;
+  }
+
   .agent-cursor__badge,
-  .agent-cursor[data-phase="moving"] .agent-cursor__status {
+  .agent-cursor[data-phase="moving"] .agent-cursor__status,
+  .agent-cursor__activity-dots i,
+  .agent-cursor[data-activity="editing"][data-phase="settled"]
+    .agent-cursor__pointer,
+  .agent-cursor[data-activity="editing"][data-phase="settled"]
+    .agent-cursor__work-ring {
     animation: none;
   }
 }

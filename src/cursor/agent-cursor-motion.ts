@@ -15,6 +15,7 @@ export interface AgentCursorCommand {
   sequence: number;
   target: ScenePoint;
   activity: AgentCursorActivity;
+  label?: string;
 }
 
 const MIN_TRAVEL_MS = 280;
@@ -88,4 +89,25 @@ export function centerOfElements(
     x: (bounds.minX + bounds.maxX) / 2,
     y: (bounds.minY + bounds.maxY) / 2,
   };
+}
+
+export function splitIntoCursorStages<T>(
+  items: readonly T[],
+  maxStages = 5,
+): T[][] {
+  if (items.length === 0) return [];
+
+  const stageCount = Math.max(1, Math.min(Math.floor(maxStages), items.length));
+  const baseSize = Math.floor(items.length / stageCount);
+  const remainder = items.length % stageCount;
+  const stages: T[][] = [];
+  let start = 0;
+
+  for (let index = 0; index < stageCount; index += 1) {
+    const size = baseSize + (index < remainder ? 1 : 0);
+    stages.push(items.slice(start, start + size));
+    start += size;
+  }
+
+  return stages;
 }

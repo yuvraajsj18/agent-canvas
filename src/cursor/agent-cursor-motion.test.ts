@@ -3,6 +3,7 @@ import {
   centerOfElements,
   cursorTravelDuration,
   pointOnCursorPath,
+  splitIntoCursorStages,
 } from "./agent-cursor-motion";
 
 describe("agent cursor motion", () => {
@@ -33,5 +34,15 @@ describe("agent cursor motion", () => {
       ]),
     ).toEqual({ x: 350, y: 170 });
     expect(centerOfElements([])).toBeNull();
+  });
+
+  it("splits large edits into a small balanced set of cursor stages", () => {
+    expect(splitIntoCursorStages([1, 2, 3], 5)).toEqual([[1], [2], [3]]);
+    expect(splitIntoCursorStages([1, 2, 3, 4, 5, 6, 7], 3)).toEqual([
+      [1, 2, 3],
+      [4, 5],
+      [6, 7],
+    ]);
+    expect(splitIntoCursorStages([], 5)).toEqual([]);
   });
 });

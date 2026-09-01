@@ -143,7 +143,7 @@ export function createToolDefinitions(
       name: "add_elements",
       title: "Add elements to the live canvas",
       description:
-        "Immediately add rectangles, diamonds, ellipses, text, or frames to Excalidraw. Provide stable unique IDs so later tools can update the same objects. This is a direct undoable canvas edit.",
+        "Add rectangles, diamonds, ellipses, text, or frames directly to Excalidraw. Use angle in radians when rotation is needed. Provide stable unique IDs so later tools can update the same objects. Large additions appear in visible stages and remain one undo step.",
       schema: addElementsSchema,
       annotations: {
         readOnlyHint: false,
@@ -247,12 +247,22 @@ export class DeveloperToolAdapter {
     ready: Promise<void>;
     cleanup: () => void;
   } {
+    return registerNativeDefinitions(context, [...this.tools.values()]);
+  }
+}
+
+export function registerNativeDefinitions(
+  context: NativeModelContext,
+  definitions: readonly WebMcpToolDefinition[],
+): {
+  ready: Promise<void>;
+  cleanup: () => void;
+} {
     const controller = new AbortController();
     const ready = Promise.all(
-      [...this.tools.values()].map((definition) =>
+      definitions.map((definition) =>
         context.registerTool(definition, { signal: controller.signal }),
       ),
     ).then(() => undefined);
     return { ready, cleanup: () => controller.abort() };
-  }
 }

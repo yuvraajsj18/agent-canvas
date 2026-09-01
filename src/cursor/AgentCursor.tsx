@@ -17,6 +17,7 @@ export type AgentCursorViewport = Pick<
 interface AgentCursorProps {
   agentName: string;
   command: AgentCursorCommand | null;
+  present: boolean;
   viewport: AgentCursorViewport | null;
   root: HTMLElement | null;
 }
@@ -24,6 +25,7 @@ interface AgentCursorProps {
 export function AgentCursor({
   agentName,
   command,
+  present,
   viewport,
   root,
 }: AgentCursorProps) {
@@ -94,6 +96,7 @@ export function AgentCursor({
       data-activity={command.activity}
       data-agent-name={agentName}
       data-phase={isMoving ? "moving" : "settled"}
+      data-presence={present ? "active" : "leaving"}
       data-target-x={command.target.x}
       data-target-y={command.target.y}
       data-testid="agent-cursor"
@@ -104,26 +107,41 @@ export function AgentCursor({
       }}
       aria-hidden="true"
     >
-      <svg
-        className="agent-cursor__pointer"
-        width="25"
-        height="31"
-        viewBox="0 0 25 31"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path
-          d="M3.3 2.8L21.2 16.1L12.8 17.6L8.1 25.7L3.3 2.8Z"
-          fill="currentColor"
-          stroke="white"
-          strokeWidth="2.4"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <span className="agent-cursor__badge">
-        <span className="agent-cursor__status" />
-        <span data-testid="agent-cursor-name">{agentName}</span>
-        <span className="agent-cursor__activity">{activityLabel}</span>
+      <span className="agent-cursor__visual">
+        <span className="agent-cursor__trail" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+        </span>
+        <span className="agent-cursor__work-ring" aria-hidden="true" />
+        <svg
+          className="agent-cursor__pointer"
+          width="25"
+          height="31"
+          viewBox="0 0 25 31"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M3.3 2.8L21.2 16.1L12.8 17.6L8.1 25.7L3.3 2.8Z"
+            fill="currentColor"
+            stroke="white"
+            strokeWidth="2.4"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="agent-cursor__badge">
+          <span className="agent-cursor__status" />
+          <span data-testid="agent-cursor-name">{agentName}</span>
+          <span className="agent-cursor__activity" data-testid="agent-cursor-activity">
+            {command.label ?? activityLabel}
+          </span>
+          <span className="agent-cursor__activity-dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+        </span>
       </span>
     </div>
   );

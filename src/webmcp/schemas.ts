@@ -20,6 +20,7 @@ const addElementSchema = z
     y: coordinateSchema,
     width: dimensionSchema.optional(),
     height: dimensionSchema.optional(),
+    angle: z.number().finite().min(-Math.PI * 2).max(Math.PI * 2).optional(),
     text: z.string().min(1).max(1_000).optional(),
     strokeColor: colorSchema.optional(),
     backgroundColor: colorSchema.optional(),

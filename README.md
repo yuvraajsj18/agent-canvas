@@ -23,14 +23,14 @@ Open `http://127.0.0.1:4173/`.
 | `read_canvas` | Read the current live elements, labels, bindings, locks, and scene revision. |
 | `read_selection` | Read the current human selection. This tool exists only when there is a selection. |
 | `move_agent_cursor` | Move the current agent to exact scene coordinates without changing canvas content. |
-| `add_elements` | Add shapes, text, and frames directly. |
+| `add_elements` | Add and rotate shapes, text, and frames directly. |
 | `update_elements` | Move, resize, relabel, style, rotate, or lock elements directly. |
 | `delete_elements` | Delete elements and remove dependent labels or connections. |
 | `connect_elements` | Add bound arrows between live elements. |
 
-Inputs have Zod validation. IDs remain stable across read and edit calls. Locked elements reject tool edits. Native registrations use one `AbortController` for cleanup. A hidden development adapter supports deterministic tests when native WebMCP is not available.
+Inputs have Zod validation. IDs remain stable across read and edit calls. Locked elements reject tool edits. Base native tool registrations remain active when the optional selection tool appears or leaves. Each registration group uses an `AbortController` for cleanup. A hidden development adapter supports deterministic tests when native WebMCP is not available.
 
-Each agent calls `set_agent_identity` once before it reads or edits the canvas. The neutral fallback is `AI Agent`. The identity is not stored across reloads, so another agent can claim its own name in a new session. The cursor then moves automatically to the related canvas objects during read and edit tools. The explicit cursor tool supports deliberate movement before an action. Motion uses an interruptible curved path, respects reduced-motion settings, ignores pointer input, and remains aligned with scene coordinates during pan and zoom.
+Each agent calls `set_agent_identity` once before it reads or edits the canvas. The neutral fallback is `AI Agent`. The identity is not stored across reloads, so another agent can claim its own name in a new session. Each tool call wakes the cursor. The cursor leaves after a short quiet period, so it does not stay on the canvas after the agent stops work. The cursor moves automatically to the related objects and shows action labels such as `Drawing 2/5`, `Updating`, `Connecting`, and `Checking`. Large additions become visible in a small number of stages. The full addition remains one Excalidraw Undo step. The explicit cursor tool supports deliberate movement before an action. Motion uses an interruptible curved path, respects reduced-motion settings, ignores pointer input, and remains aligned with scene coordinates during pan and zoom.
 
 ## Test
 
@@ -46,7 +46,7 @@ Run all checks:
 npm run check
 ```
 
-The browser test starts the app on port `4173`. It enables Chromium experimental web platform features and tests native WebMCP discovery and tool execution. It also tests direct edits, selection changes, standard Excalidraw Undo, and local persistence.
+The browser test starts the app on port `4173`. It enables Chromium experimental web platform features and tests native WebMCP discovery and tool execution. It also tests staged work, active-only cursor presence, stable base registrations, direct edits, rotation, selection changes, standard Excalidraw Undo, and local persistence.
 
 ## Main files
 

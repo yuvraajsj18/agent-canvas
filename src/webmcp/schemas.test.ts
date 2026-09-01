@@ -20,6 +20,7 @@ describe("direct WebMCP input validation", () => {
             y: 120,
             width: 180,
             height: 90,
+            angle: Math.PI / 8,
             text: "First step",
           },
         ],

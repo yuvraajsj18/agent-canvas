@@ -143,7 +143,8 @@ test("WebMCP adapter edits immediately, supports selection, undo, and persistenc
   );
   expect(await page.evaluate(() => window.__AGENT_CANVAS_TEST__?.getAgentCursor())).toMatchObject(
     {
-      activity: "editing",
+      activity: "reading",
+      label: "Checking",
       target: { x: 590, y: 185 },
     },
   );
@@ -214,13 +215,109 @@ test("WebMCP adapter edits immediately, supports selection, undo, and persistenc
     path: "artifacts/agent-canvas-webmcp.png",
     fullPage: true,
   });
-  await page.waitForTimeout(350);
+  await expect(cursor).toHaveCount(0, { timeout: 4_000 });
   await page.reload();
   await expect(page.locator(".excalidraw canvas").first()).toBeVisible();
   canvas = await readCanvasWithAdapter(page);
   expect(canvas.elements.map((item) => item.id)).toEqual(
     expect.arrayContaining(["plan", "ship", "plan-to-ship"]),
   );
+});
+
+test("agent work appears in visible stages, stays one undo step, and leaves", async ({
+  page,
+}) => {
+  await page.evaluate(() => {
+    const stageState = window as typeof window & {
+      __STAGE_TEST__?: { done: boolean; error?: string };
+    };
+    stageState.__STAGE_TEST__ = { done: false };
+    void window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke("add_elements", {
+      elements: Array.from({ length: 10 }, (_, index) => ({
+        id: `stage-${index + 1}`,
+        type: index % 2 === 0 ? "rectangle" : "ellipse",
+        x: 180 + (index % 5) * 190,
+        y: 180 + Math.floor(index / 5) * 180,
+        width: 140,
+        height: 90,
+        text: `Step ${index + 1}`,
+      })),
+    })
+      .then(() => {
+        stageState.__STAGE_TEST__ = { done: true };
+      })
+      .catch((error: unknown) => {
+        stageState.__STAGE_TEST__ = {
+          done: true,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      });
+  });
+
+  const cursor = page.getByTestId("agent-cursor");
+  await expect(cursor).toBeVisible();
+  await expect(cursor).toHaveAttribute("data-activity", "editing");
+  await expect(page.getByTestId("agent-cursor-activity")).toContainText(
+    "Drawing",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => {
+          const state = window.__AGENT_CANVAS_TEST__?.getState() as {
+            elements: { opacity?: number }[];
+          };
+          return state.elements.filter((element) => element.opacity !== 0).length;
+        },
+      ),
+    )
+    .toBeGreaterThan(0);
+  const partialCount = await page.evaluate(
+    () => {
+      const state = window.__AGENT_CANVAS_TEST__?.getState() as {
+        elements: { opacity?: number }[];
+      };
+      return state.elements.filter((element) => element.opacity !== 0).length;
+    },
+  );
+  expect(partialCount).toBeLessThan(10);
+  await page.screenshot({
+    path: "artifacts/agent-canvas-working.png",
+    fullPage: true,
+  });
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const stageState = window as typeof window & {
+          __STAGE_TEST__?: { done: boolean; error?: string };
+        };
+        return stageState.__STAGE_TEST__;
+      }),
+    )
+    .toEqual({ done: true });
+  expect(
+    await page.evaluate(
+      () =>
+        (window.__AGENT_CANVAS_TEST__?.getState() as { elementCount: number })
+          .elementCount,
+    ),
+  ).toBe(10);
+  await expect(page.getByTestId("agent-cursor-activity")).toHaveText(
+    "Checking",
+  );
+
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window.__AGENT_CANVAS_TEST__?.getState() as { elementCount: number })
+            .elementCount,
+      ),
+    )
+    .toBe(0);
+  await expect(cursor).toHaveCount(0, { timeout: 4_000 });
 });
 
 test("native WebMCP discovers and performs direct canvas edits", async ({ page }) => {
@@ -281,6 +378,7 @@ test("native WebMCP discovers and performs direct canvas edits", async ({ page }
             y: 180,
             width: 220,
             height: 110,
+            angle: Math.PI / 6,
             text: "Native WebMCP",
           },
         ],
@@ -296,6 +394,9 @@ test("native WebMCP discovers and performs direct canvas edits", async ({ page }
     const tools = await modelContext.getTools();
     const readTool = tools.find((tool) => tool.name === "read_canvas");
     if (!readTool) throw new Error("read_canvas was not discovered.");
+    (
+      window as typeof window & { __NATIVE_READ_TOOL__?: BrowserTool }
+    ).__NATIVE_READ_TOOL__ = readTool;
     const value = await modelContext.executeTool(readTool, "{}");
     return typeof value === "string"
       ? (JSON.parse(value) as {
@@ -307,7 +408,11 @@ test("native WebMCP discovers and performs direct canvas edits", async ({ page }
   });
   expect(nativeRead.structuredContent.elements).toEqual(
     expect.arrayContaining([
-      expect.objectContaining({ id: "native-box", text: "Native WebMCP" }),
+      expect.objectContaining({
+        id: "native-box",
+        text: "Native WebMCP",
+        angle: Math.PI / 6,
+      }),
     ]),
   );
 
@@ -342,6 +447,21 @@ test("native WebMCP discovers and performs direct canvas edits", async ({ page }
         });
   });
   expect(nativeSelection.structuredContent.selectedIds).toEqual(["native-box"]);
+
+  const stableRead = await page.evaluate(async () => {
+    const modelContext = (
+      document as Document & { modelContext: BrowserModelContext }
+    ).modelContext;
+    const oldReadTool = (
+      window as typeof window & { __NATIVE_READ_TOOL__?: BrowserTool }
+    ).__NATIVE_READ_TOOL__;
+    if (!oldReadTool) throw new Error("The original read tool is missing.");
+    const value = await modelContext.executeTool(oldReadTool, "{}");
+    return typeof value === "string"
+      ? (JSON.parse(value) as { structuredContent: { elementCount: number } })
+      : (value as { structuredContent: { elementCount: number } });
+  });
+  expect(stableRead.structuredContent.elementCount).toBe(1);
 });
 
 test("agent cursor removes travel motion for reduced-motion users", async ({
@@ -416,6 +536,7 @@ declare global {
       getState(): unknown;
       getAgentCursor(): {
         activity: string;
+        label?: string;
         target: { x: number; y: number };
       } | null;
       selectElements(ids: string[]): void;
