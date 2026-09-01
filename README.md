@@ -1,6 +1,6 @@
-# Excalidraw WebMCP
+# Agent Canvas
 
-This local app is the standard Excalidraw editor with direct WebMCP control. It adds a visible Figma-like cursor whose name comes from the external agent that uses the canvas. It has no built-in agent, proposal layer, review flow, or custom canvas controls.
+Agent Canvas is the standard Excalidraw editor with direct WebMCP control. It adds a visible Figma-like cursor whose name comes from the external agent that uses the canvas. It has no built-in agent, proposal layer, review flow, or custom canvas controls.
 
 An external AI agent in a compatible browser can discover the tools through native `document.modelContext.registerTool`. Tool calls read or change the current live scene. Each change uses Excalidraw history, so the standard Undo control can reverse it.
 
@@ -62,6 +62,8 @@ The browser test starts the app on port `4173`. It enables Chromium experimental
 ## Excalidraw credit
 
 This app uses the open-source [`@excalidraw/excalidraw`](https://github.com/excalidraw/excalidraw) component under the MIT license. Excalidraw is a separate project.
+
+Built with the Excalidraw component. This project is not affiliated with or endorsed by Excalidraw.
 
 ## License
 
