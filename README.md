@@ -62,3 +62,7 @@ The browser test starts the app on port `4173`. It enables Chromium experimental
 ## Excalidraw credit
 
 This app uses the open-source [`@excalidraw/excalidraw`](https://github.com/excalidraw/excalidraw) component under the MIT license. Excalidraw is a separate project.
+
+## License
+
+This project is available under the [MIT License](LICENSE).
