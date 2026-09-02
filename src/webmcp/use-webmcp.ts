@@ -12,6 +12,7 @@ import {
   type NativeModelContext,
   type ToolHandlers,
 } from "./registry";
+import type { ToolExecutionAnalytics } from "../analytics/schema";
 
 export type WebMcpCapability = "native" | "adapter" | "registration-error";
 
@@ -22,7 +23,10 @@ export interface WebMcpAdapterWindow {
 
 export function useWebMcp(
   handlers: ToolHandlers,
-  state: { hasSelection: boolean },
+  state: {
+    hasSelection: boolean;
+    onToolExecution?: (execution: ToolExecutionAnalytics) => void;
+  },
 ) {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
@@ -31,6 +35,16 @@ export function useWebMcp(
     stableHandlersRef.current = forwardingHandlers(handlersRef);
   }
   const stableHandlers = stableHandlersRef.current;
+  const executionObserverRef = useRef(state.onToolExecution);
+  executionObserverRef.current = state.onToolExecution;
+  const stableExecutionObserverRef = useRef<
+    ((execution: ToolExecutionAnalytics) => void) | null
+  >(null);
+  if (!stableExecutionObserverRef.current) {
+    stableExecutionObserverRef.current = (execution) =>
+      executionObserverRef.current?.(execution);
+  }
+  const stableExecutionObserver = stableExecutionObserverRef.current;
   const adapterRef = useRef<DeveloperToolAdapter | null>(null);
   if (!adapterRef.current) adapterRef.current = new DeveloperToolAdapter();
   const adapter = adapterRef.current;
@@ -38,17 +52,27 @@ export function useWebMcp(
     getNativeContext() ? "native" : "adapter",
   );
   const [registrationError, setRegistrationError] = useState<string | null>(null);
+  const [capabilityResolved, setCapabilityResolved] = useState(
+    () => !getNativeContext(),
+  );
   const hasSelection = state.hasSelection;
   const baseDefinitions = useMemo(
-    () => createToolDefinitions(stableHandlers, { hasSelection: false }),
-    [stableHandlers],
+    () =>
+      createToolDefinitions(stableHandlers, {
+        hasSelection: false,
+        onToolExecution: stableExecutionObserver,
+      }),
+    [stableExecutionObserver, stableHandlers],
   );
   const selectionDefinition = useMemo(
     () =>
-      createToolDefinitions(stableHandlers, { hasSelection: true }).find(
+      createToolDefinitions(stableHandlers, {
+        hasSelection: true,
+        onToolExecution: stableExecutionObserver,
+      }).find(
         (definition) => definition.name === "read_selection",
       ) ?? null,
-    [stableHandlers],
+    [stableExecutionObserver, stableHandlers],
   );
   const definitions = useMemo(
     () =>
@@ -80,9 +104,11 @@ export function useWebMcp(
     if (!context) {
       setCapability("adapter");
       setRegistrationError(null);
+      setCapabilityResolved(true);
       return;
     }
 
+    setCapabilityResolved(false);
     const lifecycle = registerNativeDefinitions(context, baseDefinitions);
     let active = true;
     lifecycle.ready
@@ -90,10 +116,12 @@ export function useWebMcp(
         if (!active) return;
         setCapability("native");
         setRegistrationError(null);
+        setCapabilityResolved(true);
       })
       .catch((error: unknown) => {
         if (!active) return;
         setCapability("registration-error");
+        setCapabilityResolved(true);
         setRegistrationError(
           error instanceof Error ? error.message : "Native registration failed.",
         );
@@ -114,6 +142,7 @@ export function useWebMcp(
     lifecycle.ready.catch((error: unknown) => {
       if (!active) return;
       setCapability("registration-error");
+      setCapabilityResolved(true);
       setRegistrationError(
         error instanceof Error
           ? error.message
@@ -129,6 +158,7 @@ export function useWebMcp(
   return {
     adapter,
     capability,
+    capabilityResolved,
     registrationError,
     tools: definitions.map((definition) => definition.name),
   };

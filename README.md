@@ -54,6 +54,14 @@ npm run check
 
 The browser test starts the app on port `4173`. It enables Chromium experimental web platform features and tests native WebMCP discovery and tool execution. It also tests staged work, active-only cursor presence, stable base registrations, direct edits, rotation, selection changes, standard Excalidraw Undo, and local persistence.
 
+## Product analytics
+
+Production analytics uses a same-origin Vercel Function and the server-side `posthog-node` SDK. Set `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` in the Vercel production environment. Supported hosts are `https://us.i.posthog.com` and `https://eu.i.posthog.com`.
+
+The app sends five low-volume events: `agent_canvas_opened`, `webmcp_capability_detected`, `webmcp_tool_executed`, `agent_work_completed`, and `human_canvas_edited`. The open event is sent once per tab session. Human changes are grouped into one event after an editing period. Cursor movement is included only as a count in the work summary. Analytics is off on local and preview URLs.
+
+The event schema does not permit canvas text, prompts, element IDs, agent names, full URLs, IP addresses, raw errors, screenshots, autocapture, or session replay. Anonymous events do not create PostHog person profiles.
+
 ## Main files
 
 - `src/App.tsx` connects the live Excalidraw scene to direct tool handlers and local persistence.
@@ -61,6 +69,8 @@ The browser test starts the app on port `4173`. It enables Chromium experimental
 - `src/core/canvas-ops.ts` keeps direct scene edits and bindings valid.
 - `src/webmcp/registry.ts` defines the focused WebMCP tool surface.
 - `src/webmcp/use-webmcp.ts` registers native tools and manages cleanup.
+- `src/analytics/browser-analytics.ts` groups approved anonymous product events.
+- `api/events.ts` validates and delivers events through PostHog on the server.
 - `tests/e2e/agent-canvas.spec.ts` tests the browser and native WebMCP flow.
 
 ## Excalidraw credit

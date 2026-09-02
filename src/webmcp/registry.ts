@@ -1,4 +1,9 @@
-import type { z } from "zod";
+import { ZodError, type z } from "zod";
+import type {
+  ToolExecutionAnalytics,
+  ToolExecutionErrorCode,
+  WebMcpToolName,
+} from "../analytics/schema";
 import {
   addElementsSchema,
   asJsonSchema,
@@ -61,6 +66,7 @@ export interface ToolHandlers {
 
 interface ToolState {
   hasSelection: boolean;
+  onToolExecution?: (execution: ToolExecutionAnalytics) => void;
 }
 
 function result(value: unknown): ToolResult {
@@ -79,12 +85,13 @@ function toRecord(value: unknown): Record<string, unknown> {
 }
 
 function tool<T>(options: {
-  name: string;
+  name: WebMcpToolName;
   title: string;
   description: string;
   schema: z.ZodType<T>;
   annotations: ToolAnnotations;
   run(input: T): unknown | Promise<unknown>;
+  onExecution?: (execution: ToolExecutionAnalytics) => void;
 }): WebMcpToolDefinition {
   return {
     name: options.name,
@@ -93,8 +100,29 @@ function tool<T>(options: {
     inputSchema: asJsonSchema(options.schema),
     annotations: options.annotations,
     async execute(input) {
-      const parsed = options.schema.parse(input);
-      return result(await options.run(parsed));
+      const startedAt = monotonicNow();
+      let affectedCount = 0;
+      try {
+        const parsed = options.schema.parse(input);
+        affectedCount = inputCount(options.name, parsed);
+        const toolResult = result(await options.run(parsed));
+        observeExecution(options.onExecution, {
+          toolName: options.name,
+          outcome: "success",
+          durationMs: monotonicNow() - startedAt,
+          affectedCount,
+        });
+        return toolResult;
+      } catch (error) {
+        observeExecution(options.onExecution, {
+          toolName: options.name,
+          outcome: "failure",
+          durationMs: monotonicNow() - startedAt,
+          affectedCount,
+          errorCode: classifyToolError(error),
+        });
+        throw error;
+      }
     },
   };
 }
@@ -112,6 +140,7 @@ export function createToolDefinitions(
       schema: emptyInputSchema,
       annotations: { readOnlyHint: true, untrustedContentHint: true },
       run: () => handlers.readCanvas(),
+      onExecution: state.onToolExecution,
     }),
     tool({
       name: "move_agent_cursor",
@@ -125,6 +154,7 @@ export function createToolDefinitions(
         idempotentHint: true,
       },
       run: (input) => handlers.moveAgentCursor(input),
+      onExecution: state.onToolExecution,
     }),
     tool({
       name: "set_agent_identity",
@@ -138,6 +168,7 @@ export function createToolDefinitions(
         idempotentHint: true,
       },
       run: (input) => handlers.setAgentIdentity(input),
+      onExecution: state.onToolExecution,
     }),
     tool({
       name: "add_elements",
@@ -152,6 +183,7 @@ export function createToolDefinitions(
         idempotentHint: false,
       },
       run: (input) => handlers.addElements(input),
+      onExecution: state.onToolExecution,
     }),
     tool({
       name: "update_elements",
@@ -166,6 +198,7 @@ export function createToolDefinitions(
         idempotentHint: false,
       },
       run: (input) => handlers.updateElements(input),
+      onExecution: state.onToolExecution,
     }),
     tool({
       name: "delete_elements",
@@ -180,6 +213,7 @@ export function createToolDefinitions(
         idempotentHint: false,
       },
       run: (input) => handlers.deleteElements(input),
+      onExecution: state.onToolExecution,
     }),
     tool({
       name: "connect_elements",
@@ -194,6 +228,7 @@ export function createToolDefinitions(
         idempotentHint: false,
       },
       run: (input) => handlers.connectElements(input),
+      onExecution: state.onToolExecution,
     }),
   ];
 
@@ -207,11 +242,60 @@ export function createToolDefinitions(
         schema: emptyInputSchema,
         annotations: { readOnlyHint: true, untrustedContentHint: true },
         run: () => handlers.readSelection(),
+        onExecution: state.onToolExecution,
       }),
     );
   }
 
   return definitions.sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function monotonicNow(): number {
+  return globalThis.performance?.now() ?? Date.now();
+}
+
+function observeExecution(
+  observer: ((execution: ToolExecutionAnalytics) => void) | undefined,
+  execution: ToolExecutionAnalytics,
+): void {
+  try {
+    observer?.(execution);
+  } catch {
+    // Analytics must never affect WebMCP tool execution.
+  }
+}
+
+function inputCount(name: WebMcpToolName, input: unknown): number {
+  if (!input || typeof input !== "object") return 0;
+  const record = input as Record<string, unknown>;
+  if (name === "add_elements" && Array.isArray(record.elements)) {
+    return record.elements.length;
+  }
+  if (name === "update_elements" && Array.isArray(record.updates)) {
+    return record.updates.length;
+  }
+  if (name === "delete_elements" && Array.isArray(record.ids)) {
+    return record.ids.length;
+  }
+  if (name === "connect_elements" && Array.isArray(record.connections)) {
+    return record.connections.length;
+  }
+  return 0;
+}
+
+function classifyToolError(error: unknown): ToolExecutionErrorCode {
+  if (error instanceof ZodError) return "invalid_input";
+  if (error instanceof Error) {
+    if (error.name === "LockedElementError") return "protected_element";
+    if (error.message.startsWith("Unknown live")) return "element_not_found";
+    if (error.message.startsWith("Element ID already exists")) {
+      return "id_conflict";
+    }
+    if (error.message.includes("canvas is not ready")) {
+      return "canvas_not_ready";
+    }
+  }
+  return "operation_failed";
 }
 
 export class DeveloperToolAdapter {

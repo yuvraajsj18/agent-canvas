@@ -11,6 +11,12 @@ import type {
   AppState,
   ExcalidrawImperativeAPI,
 } from "@excalidraw/excalidraw/types";
+import { BrowserAnalytics } from "./analytics/browser-analytics";
+import type {
+  AnalyticsEvent,
+  ToolExecutionAnalytics,
+  WebMcpMode,
+} from "./analytics/schema";
 import {
   addCanvasElements,
   connectCanvasElements,
@@ -56,17 +62,26 @@ function asExcalidraw(
   return elements as unknown as ExcalidrawElement[];
 }
 
-function loadInitialElements(): ExcalidrawElement[] {
+function loadInitialWorkspace(): {
+  elements: ExcalidrawElement[];
+  hasSavedCanvas: boolean;
+} {
   try {
     const workspace = loadWorkspace<SceneElementLike>(window.localStorage);
-    return workspace ? asExcalidraw(workspace.elements) : [];
+    return {
+      elements: workspace ? asExcalidraw(workspace.elements) : [],
+      hasSavedCanvas: Boolean(workspace),
+    };
   } catch {
-    return [];
+    return { elements: [], hasSavedCanvas: false };
   }
 }
 
 export default function App() {
-  const initialElementsRef = useRef<ExcalidrawElement[]>(loadInitialElements());
+  const initialWorkspaceRef = useRef(loadInitialWorkspace());
+  const initialElementsRef = useRef<ExcalidrawElement[]>(
+    initialWorkspaceRef.current.elements,
+  );
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [rootElement, setRootElement] = useState<HTMLElement | null>(null);
@@ -88,6 +103,36 @@ export default function App() {
   const cursorIdleTimerRef = useRef<number | null>(null);
   const cursorExitTimerRef = useRef<number | null>(null);
   const saveTimerRef = useRef<number | null>(null);
+  const expectedAgentRevisionsRef = useRef(new Set<string>());
+  const sceneObservationReadyRef = useRef(false);
+  const lastObservedRevisionRef = useRef(
+    sceneRevision(asScene(initialElementsRef.current)),
+  );
+  const lastObservedElementCountRef = useRef(
+    readCanvasSnapshot(asScene(initialElementsRef.current)).elementCount,
+  );
+  const analyticsRef = useRef<BrowserAnalytics | null>(null);
+
+  useEffect(() => {
+    const testAnalytics = isLocalDevelopmentOrigin()
+      ? window.__AGENT_CANVAS_ANALYTICS_TEST__
+      : undefined;
+    const analytics = new BrowserAnalytics({
+      hasSavedCanvas: initialWorkspaceRef.current.hasSavedCanvas,
+      initialElementCount: lastObservedElementCountRef.current,
+      initialWebMcpMode: initialWebMcpMode(),
+      enabled: testAnalytics?.enabled,
+      deploymentEnvironment: testAnalytics ? "test" : undefined,
+      transport: testAnalytics
+        ? (event) => testAnalytics.capture(event)
+        : undefined,
+    });
+    analyticsRef.current = analytics;
+    return () => {
+      analytics.dispose();
+      if (analyticsRef.current === analytics) analyticsRef.current = null;
+    };
+  }, []);
 
   apiRef.current = api;
   selectedIdsRef.current = selectedIds;
@@ -208,6 +253,11 @@ export default function App() {
       const currentApi = apiRef.current;
       if (!currentApi) throw new Error("The Excalidraw canvas is not ready.");
       elementsRef.current = asExcalidraw(elements);
+      const expectedRevisions = expectedAgentRevisionsRef.current;
+      expectedRevisions.add(sceneRevision(elements));
+      if (expectedRevisions.size > 20) {
+        expectedRevisions.delete(expectedRevisions.values().next().value!);
+      }
       currentApi.updateScene({
         elements: asExcalidraw(elements) as never,
         captureUpdate,
@@ -431,11 +481,48 @@ export default function App() {
     ],
   );
 
-  useWebMcp(toolHandlers, { hasSelection: selectedIds.length > 0 });
+  const handleToolExecution = useCallback(
+    (execution: ToolExecutionAnalytics) => {
+      const elementCount = readCanvasSnapshot(readLiveElements()).elementCount;
+      analyticsRef.current?.trackToolExecution(execution, elementCount);
+    },
+    [readLiveElements],
+  );
+
+  const webMcp = useWebMcp(toolHandlers, {
+    hasSelection: selectedIds.length > 0,
+    onToolExecution: handleToolExecution,
+  });
+
+  useEffect(() => {
+    if (!webMcp.capabilityResolved) return;
+    analyticsRef.current?.trackCapability(
+      webMcp.capability === "registration-error"
+        ? "registration_error"
+        : webMcp.capability,
+      webMcp.tools.length,
+    );
+  }, [webMcp.capability, webMcp.capabilityResolved, webMcp.tools.length]);
 
   const handleChange = useCallback(
     (nextElements: readonly ExcalidrawElement[], nextAppState: AppState) => {
       elementsRef.current = nextElements;
+      const nextScene = asScene(nextElements);
+      const nextRevision = sceneRevision(nextScene);
+      const nextElementCount = readCanvasSnapshot(nextScene).elementCount;
+      if (!sceneObservationReadyRef.current) {
+        sceneObservationReadyRef.current = true;
+      } else if (nextRevision !== lastObservedRevisionRef.current) {
+        const isAgentChange = expectedAgentRevisionsRef.current.delete(nextRevision);
+        if (!isAgentChange) {
+          analyticsRef.current?.recordHumanCanvasEdit(
+            lastObservedElementCountRef.current,
+            nextElementCount,
+          );
+        }
+      }
+      lastObservedRevisionRef.current = nextRevision;
+      lastObservedElementCountRef.current = nextElementCount;
       syncCursorViewport(nextAppState);
       const nextSelectedIds = Object.entries(nextAppState.selectedElementIds)
         .filter(([, selected]) => selected)
@@ -519,6 +606,21 @@ export default function App() {
       />
     </main>
   );
+}
+
+function initialWebMcpMode(): WebMcpMode {
+  const modelContext = (
+    document as Document & {
+      modelContext?: { registerTool?: unknown };
+    }
+  ).modelContext;
+  return modelContext && typeof modelContext.registerTool === "function"
+    ? "native"
+    : "adapter";
+}
+
+function isLocalDevelopmentOrigin(): boolean {
+  return ["127.0.0.1", "localhost"].includes(window.location.hostname);
 }
 
 function toElementSkeleton(element: {
@@ -698,6 +800,11 @@ declare global {
       getState(): unknown;
       getAgentCursor(): AgentCursorCommand | null;
       selectElements(ids: string[]): void;
+    };
+    __AGENT_CANVAS_ANALYTICS_TEST__?: {
+      enabled: boolean;
+      events: AnalyticsEvent[];
+      capture(event: AnalyticsEvent): void;
     };
   }
 }

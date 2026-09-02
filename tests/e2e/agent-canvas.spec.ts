@@ -1,10 +1,119 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    const testWindow = window as typeof window & {
+      __AGENT_CANVAS_ANALYTICS_TEST__?: {
+        enabled: boolean;
+        events: unknown[];
+        capture(event: unknown): void;
+      };
+    };
+    testWindow.__AGENT_CANVAS_ANALYTICS_TEST__ = {
+      enabled: true,
+      events: [],
+      capture(event) {
+        this.events.push(JSON.parse(JSON.stringify(event)) as unknown);
+      },
+    };
+  });
   await page.goto("/");
-  await page.evaluate(() => window.localStorage.clear());
+  await page.evaluate(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
   await page.reload();
   await expect(page.locator(".excalidraw canvas").first()).toBeVisible();
+});
+
+test("analytics stays low-volume and separates agent work from human edits", async ({
+  page,
+}) => {
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const testWindow = window as typeof window & {
+          __AGENT_CANVAS_ANALYTICS_TEST__?: { events: { event: string }[] };
+        };
+        return testWindow.__AGENT_CANVAS_ANALYTICS_TEST__?.events.map(
+          (event) => event.event,
+        );
+      }),
+    )
+    .toEqual(["agent_canvas_opened", "webmcp_capability_detected"]);
+
+  await page.evaluate(async () => {
+    await window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke("move_agent_cursor", {
+      x: 420,
+      y: 260,
+      activity: "thinking",
+    });
+    await window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke("read_canvas", {});
+    await window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke("add_elements", {
+      elements: [
+        {
+          id: "analytics-agent-box",
+          type: "rectangle",
+          x: 360,
+          y: 320,
+          width: 180,
+          height: 100,
+          text: "Private label",
+        },
+      ],
+    });
+  });
+  await page.waitForTimeout(2_700);
+
+  const afterAgent = await analyticsEvents(page);
+  expect(
+    afterAgent.filter((event) => event.event === "human_canvas_edited"),
+  ).toHaveLength(0);
+  expect(
+    afterAgent.some(
+      (event) =>
+        event.event === "webmcp_tool_executed" &&
+        event.properties.tool_name === "move_agent_cursor",
+    ),
+  ).toBe(false);
+  expect(afterAgent).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        event: "agent_work_completed",
+        properties: expect.objectContaining({
+          cursor_move_count: 1,
+          added_count: 1,
+        }),
+      }),
+    ]),
+  );
+  expect(JSON.stringify(afterAgent)).not.toContain("Private label");
+
+  await page.locator(".excalidraw").click({ position: { x: 1_050, y: 700 } });
+  await page.keyboard.press("2");
+  await page.mouse.move(850, 650);
+  await page.mouse.down();
+  await page.mouse.move(1_000, 760, { steps: 5 });
+  await page.mouse.up();
+  await page.keyboard.press("Escape");
+
+  await expect
+    .poll(async () =>
+      (await analyticsEvents(page)).filter(
+        (event) => event.event === "human_canvas_edited",
+      ).length,
+    )
+    .toBe(1);
+  const humanEvent = (await analyticsEvents(page)).find(
+    (event) => event.event === "human_canvas_edited",
+  );
+  expect(humanEvent).toMatchObject({
+    properties: {
+      element_count_before: 1,
+      element_count_after: 2,
+      after_agent_work: true,
+    },
+  });
 });
 
 test("shows only the standard Excalidraw surface", async ({ page }) => {
@@ -528,6 +637,17 @@ test("agent cursor removes travel motion for reduced-motion users", async ({
   );
   await expect(page.getByTestId("agent-cursor-name")).toHaveText("Gemini");
 });
+
+async function analyticsEvents(page: Page) {
+  return page.evaluate(() => {
+    const testWindow = window as typeof window & {
+      __AGENT_CANVAS_ANALYTICS_TEST__?: {
+        events: { event: string; properties: Record<string, unknown> }[];
+      };
+    };
+    return testWindow.__AGENT_CANVAS_ANALYTICS_TEST__?.events ?? [];
+  });
+}
 
 async function readCanvasWithAdapter(page: import("@playwright/test").Page) {
   const result = await page.evaluate(() =>

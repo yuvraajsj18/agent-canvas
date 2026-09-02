@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { ToolExecutionAnalytics } from "../analytics/schema";
 import { createToolDefinitions, DeveloperToolAdapter } from "./registry";
 
 const handlers = () => {
@@ -85,6 +86,42 @@ describe("WebMCP direct-edit adapter", () => {
     expect(adapter.listTools().map((tool) => tool.name)).toContain(
       "read_selection",
     );
+  });
+
+  it("reports only controlled execution metadata", async () => {
+    const callbacks = handlers();
+    const executions: ToolExecutionAnalytics[] = [];
+    const adapter = new DeveloperToolAdapter();
+    adapter.replace(
+      createToolDefinitions(callbacks, {
+        hasSelection: false,
+        onToolExecution: (execution) => executions.push(execution),
+      }),
+    );
+
+    await adapter.invoke("add_elements", {
+      elements: [
+        { id: "one", type: "rectangle", x: 0, y: 0, text: "secret" },
+        { id: "two", type: "ellipse", x: 200, y: 0 },
+      ],
+    });
+    await expect(
+      adapter.invoke("update_elements", { updates: [{ id: "one" }] }),
+    ).rejects.toThrow();
+
+    expect(executions).toHaveLength(2);
+    expect(executions[0]).toMatchObject({
+      toolName: "add_elements",
+      outcome: "success",
+      affectedCount: 2,
+    });
+    expect(executions[1]).toMatchObject({
+      toolName: "update_elements",
+      outcome: "failure",
+      affectedCount: 0,
+      errorCode: "invalid_input",
+    });
+    expect(JSON.stringify(executions)).not.toContain("secret");
   });
 });
 
