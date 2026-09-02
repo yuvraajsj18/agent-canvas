@@ -6,7 +6,7 @@ An external AI agent in a compatible browser can discover the tools through nati
 
 ## Live demo
 
-Open [Agent Canvas](https://agent-canvas-lyart.vercel.app/).
+Open [Agent Canvas](https://agent-canvas.yuvraj.tech/).
 
 ## Run locally
 
