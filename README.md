@@ -58,9 +58,21 @@ The browser test starts the app on port `4173`. It enables Chromium experimental
 
 Production analytics uses a same-origin Vercel Function and the server-side `posthog-node` SDK. Set `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` in the Vercel production environment. Supported hosts are `https://us.i.posthog.com` and `https://eu.i.posthog.com`.
 
-The app sends five low-volume events: `agent_canvas_opened`, `webmcp_capability_detected`, `webmcp_tool_executed`, `agent_work_completed`, and `human_canvas_edited`. The open event is sent once per tab session. Human changes are grouped into one event after an editing period. Cursor movement is included only as a count in the work summary. Analytics is off on local and preview URLs.
+The app sends five low-volume event types: `$pageview`, `webmcp_capability_detected`, `webmcp_tool_executed`, `agent_work_completed`, and `human_canvas_edited`. A pageview is sent once per document load (including reloads), not per React remount. It replaces `agent_canvas_opened`; both are never sent for the same visit. Historical opens remain under the old name. Human changes are grouped into one event after an editing period. Cursor movement is included only as a count in the work summary. Analytics is off on local and preview URLs.
 
-The event schema does not permit canvas text, prompts, element IDs, agent names, full URLs, IP addresses, raw errors, screenshots, autocapture, or session replay. Anonymous events do not create PostHog person profiles.
+Standard `$session_id` UUIDv7 values are shared across tabs on the same origin. Sessions renew after 30 minutes without a captured event or after 24 hours. Only the fixed public app URL, hostname, and `/` path are sent; query strings and fragments are excluded. This supports PostHog Web Analytics without a custom traffic dashboard. Referrers, campaign parameters, and pageleave events are not collected, so source and time-on-page reports are limited.
+
+The browser event schema rejects canvas text, prompts, element IDs, agent names, arbitrary URLs, IP addresses, raw errors, and extra properties. There is no autocapture or session replay. Anonymous events do not create PostHog person profiles.
+
+The server reads the visitor IP from Vercel's `ipAddress(request)` helper and passes it only to PostHog for GeoIP processing. Missing or invalid IPs disable GeoIP to avoid reporting the server's location. **Before deploying, enable PostHog's `Discard client IP data` project setting** and configure the GeoIP transformation to retain only country and region data. PostHog processes the IP before discarding it from stored events; this is not a claim that the IP never reaches PostHog. Do not log event payloads or visitor IPs. Confirm a live pageview has country/region but no stored `$ip` or detailed location data after each configuration change.
+
+In PostHog, run `GeoIP` first and `Keep country and region only` (the `Filter Properties` template) second. The filter sets these properties to null before event storage:
+
+```text
+$geoip_city_name, $geoip_city_confidence, $geoip_subdivision_2_name, $geoip_subdivision_2_code, $geoip_subdivision_3_name, $geoip_subdivision_3_code, $geoip_continent_name, $geoip_continent_code, $geoip_postal_code, $geoip_latitude, $geoip_longitude, $geoip_accuracy_radius, $geoip_time_zone, $set, $set_once
+```
+
+Only country name/code and first-level region name/code remain as location values. These project settings are external to the repository and must be checked when setting up another PostHog project. Tabs open before the version 2 analytics update must reload to send the new schema; this does not affect canvas use or saved drawings.
 
 ## Main files
 

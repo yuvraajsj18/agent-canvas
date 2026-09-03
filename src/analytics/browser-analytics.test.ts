@@ -6,11 +6,13 @@ describe("BrowserAnalytics", () => {
   const events: AnalyticsEvent[] = [];
   let persistentStorage: Storage;
   let tabStorage: Storage;
+  let pageLoad: object;
 
   beforeEach(() => {
     vi.useFakeTimers();
     persistentStorage = memoryStorage();
     tabStorage = memoryStorage();
+    pageLoad = {};
     events.length = 0;
   });
 
@@ -28,20 +30,21 @@ describe("BrowserAnalytics", () => {
       initialWebMcpMode: "adapter",
       localStorage: persistentStorage,
       sessionStorage: tabStorage,
+      pageLoad,
       transport: (event) => {
         events.push(event);
       },
     });
   }
 
-  it("captures one open and one capability event per tab session", () => {
+  it("captures one pageview per document, including StrictMode remounts", () => {
     const first = createAnalytics();
     const second = createAnalytics();
     first.trackCapability("native", 7);
     second.trackCapability("native", 7);
 
     expect(events.map((event) => event.event)).toEqual([
-      "agent_canvas_opened",
+      "$pageview",
       "webmcp_capability_detected",
     ]);
     expect(events[0]).toMatchObject({
@@ -52,6 +55,33 @@ describe("BrowserAnalytics", () => {
     });
     first.dispose();
     second.dispose();
+  });
+
+  it("counts reloads but keeps the visitor and active session stable", () => {
+    const first = createAnalytics();
+    first.dispose();
+    pageLoad = {};
+    const second = createAnalytics();
+    expect(events.map((event) => event.event)).toEqual(["$pageview", "$pageview"]);
+    expect(events[1].distinct_id).toBe(events[0].distinct_id);
+    expect(events[1].properties.$session_id).toBe(events[0].properties.$session_id);
+    expect(events[1]).toMatchObject({ properties: { returning_visitor: true } });
+    second.dispose();
+  });
+
+  it("sends only fixed public page properties, never query strings or fragments", () => {
+    window.history.replaceState({}, "", "/?token=private-query#private-board");
+    const analytics = createAnalytics();
+    expect(events[0].properties).toMatchObject({
+      $current_url: "https://agent-canvas.yuvraj.tech/",
+      $host: "agent-canvas.yuvraj.tech",
+      $pathname: "/",
+      schema_version: 2,
+    });
+    expect(JSON.stringify(events)).not.toContain("private-");
+    expect(events[0].properties.$session_id).toMatch(/^[\da-f]{8}-[\da-f]{4}-7[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/);
+    window.history.replaceState({}, "", "/");
+    analytics.dispose();
   });
 
   it("does not emit cursor events and sends one aggregate work summary", () => {

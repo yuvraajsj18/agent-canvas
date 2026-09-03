@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const ANALYTICS_SCHEMA_VERSION = 1 as const;
+export const ANALYTICS_SCHEMA_VERSION = 2 as const;
 
 export const WEBMCP_TOOL_NAMES = [
   "add_elements",
@@ -39,7 +39,13 @@ const analyticsIdSchema = z
 const countSchema = z.number().int().min(0).max(100_000);
 const durationSchema = z.number().int().min(0).max(600_000);
 const commonProperties = {
-  session_id: analyticsIdSchema,
+  $session_id: z.uuidv7(),
+  $current_url: z.enum([
+    "https://agent-canvas.yuvraj.tech/",
+    "https://agent-canvas-lyart.vercel.app/",
+  ]),
+  $host: z.enum(["agent-canvas.yuvraj.tech", "agent-canvas-lyart.vercel.app"]),
+  $pathname: z.literal("/"),
   app_version: z.string().min(1).max(40),
   deployment_environment: z.enum([
     "production",
@@ -67,7 +73,7 @@ const eventEnvelope = <
     .strict();
 
 export const analyticsEventSchema = z.discriminatedUnion("event", [
-  eventEnvelope("agent_canvas_opened", {
+  eventEnvelope("$pageview", {
     returning_visitor: z.boolean(),
     has_saved_canvas: z.boolean(),
     initial_element_count_bucket: z.enum(["0", "1_9", "10_49", "50_plus"]),

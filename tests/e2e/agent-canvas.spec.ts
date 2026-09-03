@@ -40,7 +40,7 @@ test("analytics stays low-volume and separates agent work from human edits", asy
         );
       }),
     )
-    .toEqual(["agent_canvas_opened", "webmcp_capability_detected"]);
+    .toEqual(["$pageview", "webmcp_capability_detected"]);
 
   await page.evaluate(async () => {
     await window.__EXCALIDRAW_WEBMCP_ADAPTER__?.invoke("move_agent_cursor", {
@@ -112,6 +112,19 @@ test("analytics stays low-volume and separates agent work from human edits", asy
       element_count_before: 1,
       element_count_after: 2,
       after_agent_work: true,
+    },
+  });
+
+  const beforeReload = (await analyticsEvents(page))[0];
+  await page.reload();
+  await expect.poll(async () => (await analyticsEvents(page)).length).toBe(1);
+  const afterReload = (await analyticsEvents(page))[0];
+  expect(afterReload).toMatchObject({
+    event: "$pageview",
+    properties: {
+      $session_id: beforeReload.properties.$session_id,
+      $pathname: "/",
+      returning_visitor: true,
     },
   });
 });

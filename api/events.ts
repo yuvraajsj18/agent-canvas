@@ -2,6 +2,7 @@ import { waitUntil } from "@vercel/functions";
 import { PostHog } from "posthog-node";
 import { handleAnalyticsRequest } from "../src/analytics/server-handler.js";
 import type { AnalyticsEvent } from "../src/analytics/schema.js";
+import { posthogCaptureInput } from "../src/analytics/posthog-event.js";
 
 const POSTHOG_HOSTS = new Set([
   "https://us.i.posthog.com",
@@ -23,7 +24,7 @@ export default {
 
     return handleAnalyticsRequest(request, {
       capture(event) {
-        waitUntil(deliverEvent(token, host, event));
+        waitUntil(deliverEvent(token, host, event, request));
       },
     });
   },
@@ -33,6 +34,7 @@ async function deliverEvent(
   token: string,
   host: string,
   event: AnalyticsEvent,
+  request: Request,
 ): Promise<void> {
   const posthog = new PostHog(token, {
     host,
@@ -40,14 +42,7 @@ async function deliverEvent(
     flushInterval: 0,
     disableGeoip: true,
   });
-  posthog.capture({
-    distinctId: event.distinct_id,
-    event: event.event,
-    properties: {
-      ...event.properties,
-      $process_person_profile: false,
-    },
-  });
+  posthog.capture(posthogCaptureInput(event, request));
   await posthog.shutdown();
 }
 

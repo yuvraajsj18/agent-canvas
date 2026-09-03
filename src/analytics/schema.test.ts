@@ -2,18 +2,21 @@ import { describe, expect, it } from "vitest";
 import { analyticsEventSchema, bucketElementCount } from "./schema";
 
 const baseProperties = {
-  session_id: "session-1",
+  $session_id: "019efdb3-b000-7000-8000-000000000001",
+  $current_url: "https://agent-canvas.yuvraj.tech/",
+  $host: "agent-canvas.yuvraj.tech",
+  $pathname: "/",
   app_version: "0.2.0",
   deployment_environment: "test" as const,
   webmcp_mode: "native" as const,
-  schema_version: 1 as const,
+  schema_version: 2 as const,
 };
 
 describe("analytics event schema", () => {
   it("accepts the approved traffic event", () => {
     expect(
       analyticsEventSchema.safeParse({
-        event: "agent_canvas_opened",
+        event: "$pageview",
         distinct_id: "visitor-1",
         properties: {
           ...baseProperties,

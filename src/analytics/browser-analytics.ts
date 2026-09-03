@@ -6,11 +6,11 @@ import {
   type ToolExecutionAnalytics,
   type WebMcpMode,
 } from "./schema";
+import { AnalyticsSession } from "./session";
 
 const DISTINCT_ID_KEY = "agent-canvas.analytics.distinct-id.v1";
 const RETURNING_VISITOR_KEY = "agent-canvas.analytics.seen.v1";
-const SESSION_ID_KEY = "agent-canvas.analytics.session-id.v1";
-const OPEN_EVENT_KEY = "agent-canvas.analytics.opened.v1";
+const trackedPageLoads = new WeakSet<object>();
 const CAPABILITY_EVENT_KEY = "agent-canvas.analytics.capability.v1";
 const HUMAN_EDIT_IDLE_MS = 1_800;
 const AGENT_WORK_IDLE_MS = 2_500;
@@ -47,6 +47,8 @@ export interface BrowserAnalyticsOptions {
   sessionStorage?: Storage;
   transport?: (event: AnalyticsEvent) => void | Promise<void>;
   now?: () => number;
+  /** Test seam: a new object represents a new browser document/reload. */
+  pageLoad?: object;
 }
 
 export class BrowserAnalytics {
@@ -56,7 +58,8 @@ export class BrowserAnalytics {
   private readonly transport: (event: AnalyticsEvent) => void | Promise<void>;
   private readonly now: () => number;
   private readonly distinctId: string;
-  private readonly sessionId: string;
+  private readonly session: AnalyticsSession;
+  private readonly pageLoad: object;
   private readonly appVersion: string;
   private readonly deploymentEnvironment:
     | "production"
@@ -81,9 +84,8 @@ export class BrowserAnalytics {
     this.distinctId = this.enabled
       ? getOrCreateId(this.localStorage, DISTINCT_ID_KEY)
       : "analytics-disabled";
-    this.sessionId = this.enabled
-      ? getOrCreateId(this.sessionStorage, SESSION_ID_KEY)
-      : "analytics-disabled";
+    this.session = new AnalyticsSession(this.localStorage);
+    this.pageLoad = options.pageLoad ?? document;
     this.appVersion = options.appVersion ?? __APP_VERSION__;
     this.deploymentEnvironment =
       options.deploymentEnvironment ??
@@ -170,14 +172,14 @@ export class BrowserAnalytics {
     hasSavedCanvas: boolean,
     initialElementCount: number,
   ): void {
-    if (safeGet(this.sessionStorage, OPEN_EVENT_KEY)) return;
+    if (trackedPageLoads.has(this.pageLoad)) return;
     const returningVisitor = Boolean(
       safeGet(this.localStorage, RETURNING_VISITOR_KEY),
     );
-    safeSet(this.sessionStorage, OPEN_EVENT_KEY, "1");
+    trackedPageLoads.add(this.pageLoad);
     safeSet(this.localStorage, RETURNING_VISITOR_KEY, "1");
     this.capture({
-      event: "agent_canvas_opened",
+      event: "$pageview",
       distinct_id: this.distinctId,
       properties: {
         ...this.baseProperties(),
@@ -287,8 +289,15 @@ export class BrowserAnalytics {
   }
 
   private baseProperties() {
+    // Only public, fixed app URLs are permitted. Never capture query/hash data.
+    const host = window.location.hostname === "agent-canvas-lyart.vercel.app"
+      ? "agent-canvas-lyart.vercel.app"
+      : "agent-canvas.yuvraj.tech";
     return {
-      session_id: this.sessionId,
+      $session_id: this.session.touch(this.now()),
+      $current_url: `https://${host}/` as const,
+      $host: host,
+      $pathname: "/",
       app_version: this.appVersion,
       deployment_environment: this.deploymentEnvironment,
       webmcp_mode: this.webMcpMode,
